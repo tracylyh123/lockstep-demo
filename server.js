@@ -147,10 +147,15 @@ setInterval(() => {
             room.actions = [];
             room.currentTick = 0;
             room.status = roomStatus.pending;
-            io.in(index).emit('over');
+            io.in(index).emit('roomClosed', {"info": "room: " + room.roomId + " closed"});
             io.in(index).clients((error, socketIds) => {
                 socketIds.forEach((socketId) => {
                     io.sockets.sockets[socketId].leave(index)
+                    let client = clients.get(socketId);
+                    if (client) {
+                        client.roomId = -1;
+                        client.status = clientStatus.idle;
+                    }
                 });
             });
         }
@@ -176,4 +181,8 @@ http.listen(3000, () => {
 
 app.get('/', (req, res) => {
     res.sendFile(__dirname + '/index.html');
+});
+
+app.get('/client.js', (req, res) => {
+    res.sendFile(__dirname + '/client.js');
 });
