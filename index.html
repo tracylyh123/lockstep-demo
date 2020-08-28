@@ -12,6 +12,7 @@
         display: flex;
         justify-content: center;
         align-items: center;
+        position: relative;
      }   
     #_console {
         margin-top: 5px;
@@ -25,6 +26,9 @@
     }
     #matching {
         position: absolute;
+        left: 50%;
+        top: 50%;
+        transform: translate(-50%,-50%);
     }
     </style>
     <script type="text/javascript" src="/socket.io/socket.io.js"></script>
