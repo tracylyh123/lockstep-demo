@@ -1,6 +1,13 @@
+
 window.onload = function() {
-    const arena = document.getElementById('arena');
-    const ctx = arena.getContext("2d");
+    const arenaEl = document.getElementById('arena');
+    const matchingEl = document.getElementById("matching");
+    const matchingButtonEl = document.getElementById("matching-button");
+    const matchingInfoEl = document.getElementById("matching-info");
+    const consoleEl = document.getElementById("_console");
+
+    const ctx = arenaEl.getContext("2d");
+
     const socket = io();
 
     const speed = 50;
@@ -22,142 +29,38 @@ window.onload = function() {
         "inProgress": 2,
     };
     const fps = 60;
+    const roomSize = 2;
+
+    var clientId = null;
 
     // status of each turn
     var timer;
-    var clients = [];
+    var entities = [];
+    var entity = null;
     var currentStatus = status.idle;
-    var totalClientNumber = 0;
     var tick = 0;
     var lastTick = -1;
     var lastTs;
     var req;
-
-    var _matching = document.getElementById("matching");
-    var _matchingButton = document.getElementById("matching-button");
-    var _matchingInfo = document.getElementById("matching-info");
-    var _console = document.getElementById("_console");
     
-    var output = function(message) {
-        _console.innerHTML += message + "<br>";
+    const output = function(message) {
+        consoleEl.innerHTML += message + "<br>";
     }
 
-    var draw = function() {
-        ctx.clearRect(0, 0, arena.width, arena.height);
-        clients.forEach(function(client, index) {
+    const draw = function() {
+        ctx.clearRect(0, 0, arenaEl.width, arenaEl.height);
+        for (var entity of entities) {
             ctx.beginPath();
-            ctx.arc(client.position.x, client.position.y, 20, 0, Math.PI * 2, true);
+            ctx.arc(entity.position.x, entity.position.y, 20, 0, Math.PI * 2, true);
             ctx.closePath();
-            ctx.fillStyle = client.color;
+            ctx.fillStyle = entity.color;
             ctx.fill();
-        });
+        }
         req = window.requestAnimationFrame(draw);
     }
 
-    _matchingButton.addEventListener('click', function() {
-        if (socket.connected) {
-            _matchingInfo.innerHTML = "waiting...(0/" + totalClientNumber + ")";
-            currentStatus = status.pending;
-            resetPanel();
-            socket.emit('matching');
-        } else {
-            output("you've not connected to server");
-        }
-    });
-
-    socket.on('connected', function(message) {
-        totalClientNumber = message.totalClientNumber;
-        output(message.info);
-    });
-
-    socket.on('connectFailed', function(message) {
-        output(message.info);
-    });
-
-    socket.on('clientJoined', function(message) {
-        _matchingInfo.innerHTML = "waiting...(" + message.currentClientNumber + "/" + message.totalClientNumber + ")";
-        output(message.info);
-    });
-
-    socket.on('start', function(message) {
-        clearInterval(timer);
-        bindInputHandler();
-        currentStatus = status.inProgress;
-        clients = message.clients;
-        setTimeout(function() {
-            resetPanel();
-            timer = setInterval(function() {
-                if (lastTick !== tick) {
-                    var nowTs = +new Date();
-                    var delta = (nowTs - (lastTs || nowTs)) / 1000.0;
-                    lastTs = nowTs;
-                    var action;
-                    if (key.left) {
-                        action = { "delta": delta, "type": actionTypes.moveToLeft }
-                    } else if (key.right) {
-                        action = { "delta": delta, "type": actionTypes.moveToRight }
-                    } else if (key.top) {
-                        action = { "delta": delta, "type": actionTypes.moveToTop }
-                    } else if (key.bottom) {
-                        action = { "delta": delta, "type": actionTypes.moveToBottom }
-                    } else {
-                        action = {}
-                    }
-
-                    socket.emit('update', {
-                        "tick": tick,
-                        "action": action,
-                    });
-                    lastTick = tick;
-                }
-            }, 1000 / fps);
-            draw();
-        }, 1000);
-    });
-    
-    socket.on('update', function(message) {
-        message.actions.forEach(function(client) {
-            clients.forEach(function(_client) {
-                if (_client.id === client.id) {
-                    var offset = client.action.delta * speed;
-                    if (client.action.type === actionTypes.moveToLeft) {
-                        _client.position.x -= offset;
-                    } else if (client.action.type === actionTypes.moveToRight) {
-                        _client.position.x += offset;
-                    } else if (client.action.type === actionTypes.moveToTop) {
-                        _client.position.y -= offset;
-                    } else if (client.action.type === actionTypes.moveToBottom) {
-                        _client.position.y += offset;
-                    }
-                }
-            });
-        });
-        tick++;
-    });
-
-    socket.on('clientLeft', function(message) {
-        if (currentStatus === status.pending) {
-            _matchingInfo.innerHTML = "waiting...(" + message.currentClientNumber + "/" + message.totalClientNumber + ")";
-        }
-        output(message.info);
-    });
-
-    socket.on('roomClosed', function(message) {
-        ctx.clearRect(0, 0, arena.width, arena.height);
-        clearInterval(timer);
-        window.cancelAnimationFrame(req);
-        resetStatus();
-        resetPanel();
-        unbindInputHandler();
-        output(message.info);
-    });
-
-    socket.on('matchingFailed', function(message) {
-        output(message.info);
-    });
-
-    var bindInputHandler = function() {
-        var keyHandler = function(event) {
+    const bindInputHandler = function() {
+        const keyHandler = function(event) {
             event.preventDefault();
             if (event.keyCode === 37) {
                 key.left = (event.type === "keydown");
@@ -173,35 +76,143 @@ window.onload = function() {
         document.body.onkeyup = keyHandler;
     }
 
-    var unbindInputHandler = function() {
+    const unbindInputHandler = function() {
         document.body.onkeydown = null;
         document.body.onkeyup = null;
     }
 
-    var resetStatus = function() {
-        clients = [];
+    const resetStatus = function() {
+        entities = [];
         currentStatus = status.idle;
         timer = undefined;
-        totalClientNumber = 0;
         tick = 0;
         lastTick = -1;
         lastTs = undefined;
+        entity = null;
     }
 
-    var resetPanel = function() {
+    const updatePanel = function() {
         if (currentStatus === status.inProgress) {
-            _matching.style.display = 'none';
+            matchingEl.style.display = 'none';
         } else {
-            _matching.style.display = 'inline-block';
+            matchingEl.style.display = 'inline-block';
             if (currentStatus === status.idle) {
-                _matchingButton.style.display = 'inline-block';
-                _matchingInfo.style.display = 'none';
+                matchingButtonEl.style.display = 'inline-block';
+                matchingInfoEl.style.display = 'none';
             } else if (currentStatus === status.pending) {
-                _matchingButton.style.display = 'none';
-                _matchingInfo.style.display = 'inline-block';
+                matchingButtonEl.style.display = 'none';
+                matchingInfoEl.style.display = 'inline-block';
             }
         }
     }
 
-    resetPanel();
+    matchingButtonEl.onclick = function() {
+        if (socket.connected) {
+            matchingInfoEl.innerHTML = "waiting...(0/" + roomSize + ")";
+            currentStatus = status.pending;
+            updatePanel();
+            socket.emit('matching');
+        } else {
+            output("you've not connected to server");
+        }
+    }
+
+    socket.on('connected', function(message) {
+        clientId = message.clientId;
+        output(message.info);
+    });
+
+    socket.on('connectFailed', function(message) {
+        output(message.info);
+    });
+
+    socket.on('clientJoined', function(message) {
+        matchingInfoEl.innerHTML = "waiting...(" + message.clientNumber + "/" + roomSize + ")";
+        output(message.info);
+    });
+
+    socket.on('start', function(message) {
+        clearInterval(timer);
+        currentStatus = status.inProgress;
+        entities = message.entities;
+        entity = entities.find(entity => entity.clientId == clientId);
+        if (!entity) {
+            output("cannot get an entity");
+            return;
+        }
+        setTimeout(function() {
+            updatePanel();
+            bindInputHandler();
+            draw();
+            timer = setInterval(function() {
+                if (lastTick !== tick) {
+                    var nowTs = +new Date();
+                    var _dt = (nowTs - (lastTs || nowTs)) / 1000;
+                    lastTs = nowTs;
+                    var action;
+                    if (key.left) {
+                        action = { "_dt": _dt, "type": actionTypes.moveToLeft }
+                    } else if (key.right) {
+                        action = { "_dt": _dt, "type": actionTypes.moveToRight }
+                    } else if (key.top) {
+                        action = { "_dt": _dt, "type": actionTypes.moveToTop }
+                    } else if (key.bottom) {
+                        action = { "_dt": _dt, "type": actionTypes.moveToBottom }
+                    } else {
+                        action = {}
+                    }
+                    action.entityId = entity.id;
+
+                    socket.emit('update', {
+                        "tick": tick,
+                        "action": action,
+                    });
+                    lastTick = tick;
+                }
+            }, 1000 / fps);
+        }, 1000);
+    });
+    
+    socket.on('update', function(message) {
+        message.actions.forEach(function(action) {
+            entities.forEach(function(entity) {
+                if (entity.id === action.entityId) {
+                    var offset = action._dt * speed;
+                    if (action.type === actionTypes.moveToLeft) {
+                        entity.position.x -= offset;
+                    } else if (action.type === actionTypes.moveToRight) {
+                        entity.position.x += offset;
+                    } else if (action.type === actionTypes.moveToTop) {
+                        entity.position.y -= offset;
+                    } else if (action.type === actionTypes.moveToBottom) {
+                        entity.position.y += offset;
+                    }
+                }
+            });
+        });
+        tick++;
+    });
+
+    socket.on('clientLeft', function(message) {
+        if (currentStatus === status.pending) {
+            matchingInfoEl.innerHTML = "waiting...(" + message.currentClientNumber + "/" + roomSize + ")";
+        }
+        output(message.info);
+    });
+
+    socket.on('roomClosed', function(message) {
+        ctx.clearRect(0, 0, arenaEl.width, arenaEl.height);
+        clearInterval(timer);
+        window.cancelAnimationFrame(req);
+        resetStatus();
+        updatePanel();
+        unbindInputHandler();
+        output(message.info);
+    });
+
+    socket.on('matchingFailed', function(message) {
+        output(message.info);
+    });
+
+    updatePanel();
 }
