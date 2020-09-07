@@ -196,13 +196,18 @@ Server.prototype.initMonitor = function() {
             }
 
             if (room.couldBeClosed()) {
+                let history = {
+                    "entities": room.entities,
+                    "actions": room.actions
+                };
                 room.close();
                 io.in(roomId).emit('roomClosed', {
-                    "info": "room: " + roomId + " closed"
+                    "info": "room: " + roomId + " closed",
+                    "history": history
                 });
                 io.in(roomId).clients((error, socketIds) => {
                     socketIds.forEach((socketId) => {
-                        io.sockets.sockets[socketId].leave(roomId)
+                        io.sockets.sockets[socketId].leave(roomId);
                     });
                 });
             }

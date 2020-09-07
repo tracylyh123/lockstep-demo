@@ -3,6 +3,7 @@ window.onload = function() {
     const arenaEl = document.getElementById('arena');
     const matchingEl = document.getElementById("matching");
     const matchingButtonEl = document.getElementById("matching-button");
+    const replayButtonEl = document.getElementById("replay-button");
     const matchingInfoEl = document.getElementById("matching-info");
     const consoleEl = document.getElementById("_console");
 
@@ -27,11 +28,16 @@ window.onload = function() {
         "idle": 0,
         "pending": 1,
         "inProgress": 2,
+        "replaying": 3
     };
     const fps = 60;
     const roomSize = 2;
 
     var clientId = null;
+    var history = {
+        "entities": [],
+        "actions": []
+    };
 
     // status of each turn
     var timer;
@@ -96,14 +102,38 @@ window.onload = function() {
             matchingEl.style.display = 'none';
         } else {
             matchingEl.style.display = 'inline-block';
+            replayButtonEl.style.display = 'none';
             if (currentStatus === status.idle) {
                 matchingButtonEl.style.display = 'inline-block';
                 matchingInfoEl.style.display = 'none';
+                if (history.actions.length > 0) {
+                    replayButtonEl.style.display = 'inline-block';
+                }
             } else if (currentStatus === status.pending) {
                 matchingButtonEl.style.display = 'none';
                 matchingInfoEl.style.display = 'inline-block';
+            } else if (currentStatus === status.replaying) {
+                matchingButtonEl.style.display = 'none';
+                matchingInfoEl.style.display = 'none';
             }
         }
+    }
+
+    const updateEntities = function(action) {
+        entities.forEach(function(entity) {
+            if (entity.id === action.entityId) {
+                var offset = action._dt * speed;
+                if (action.type === actionTypes.moveToLeft) {
+                    entity.position.x -= offset;
+                } else if (action.type === actionTypes.moveToRight) {
+                    entity.position.x += offset;
+                } else if (action.type === actionTypes.moveToTop) {
+                    entity.position.y -= offset;
+                } else if (action.type === actionTypes.moveToBottom) {
+                    entity.position.y += offset;
+                }
+            }
+        });
     }
 
     matchingButtonEl.onclick = function() {
@@ -115,6 +145,33 @@ window.onload = function() {
         } else {
             output("you've not connected to server");
         }
+    }
+
+    replayButtonEl.onclick = function() {
+        if (history.entities.length < 1) {
+            return;
+        }
+        currentStatus = status.replaying;
+        entities = JSON.parse(JSON.stringify(history.entities));
+        updatePanel();
+        draw();
+        var n = history.actions.length;
+        var i = 0;
+        var timer = setInterval(function() {
+            var actions = history.actions.slice(i, i + roomSize);
+            for (var action of actions) {
+                updateEntities(action);
+            }
+            i += 2;
+            if (i > n) {
+                clearInterval(timer);
+                window.cancelAnimationFrame(req);
+                ctx.clearRect(0, 0, arenaEl.width, arenaEl.height);
+                currentStatus = status.idle;
+                i = 0;
+                updatePanel();
+            }
+        }, 1000 / fps);
     }
 
     socket.on('connected', function(message) {
@@ -175,20 +232,7 @@ window.onload = function() {
     
     socket.on('update', function(message) {
         message.actions.forEach(function(action) {
-            entities.forEach(function(entity) {
-                if (entity.id === action.entityId) {
-                    var offset = action._dt * speed;
-                    if (action.type === actionTypes.moveToLeft) {
-                        entity.position.x -= offset;
-                    } else if (action.type === actionTypes.moveToRight) {
-                        entity.position.x += offset;
-                    } else if (action.type === actionTypes.moveToTop) {
-                        entity.position.y -= offset;
-                    } else if (action.type === actionTypes.moveToBottom) {
-                        entity.position.y += offset;
-                    }
-                }
-            });
+            updateEntities(action);
         });
         tick++;
     });
@@ -205,9 +249,10 @@ window.onload = function() {
         clearInterval(timer);
         window.cancelAnimationFrame(req);
         resetStatus();
-        updatePanel();
         unbindInputHandler();
         output(message.info);
+        history = message.history;
+        updatePanel();
     });
 
     socket.on('matchingFailed', function(message) {
