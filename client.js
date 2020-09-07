@@ -1,4 +1,3 @@
-
 window.onload = function() {
     const arenaEl = document.getElementById('arena');
     const matchingEl = document.getElementById("matching");
