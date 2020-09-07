@@ -162,7 +162,7 @@ window.onload = function() {
             for (var action of actions) {
                 updateEntities(action);
             }
-            i += 2;
+            i += roomSize;
             if (i > n) {
                 clearInterval(timer);
                 window.cancelAnimationFrame(req);
